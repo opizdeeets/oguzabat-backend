@@ -4,8 +4,12 @@ import traceback
 from app.routers import company, news, project, about_gallery, partner, contact, application, vacancy, auth
 from app.models.models import *
 from app.core.db import engine, Base
+from app.core.config import settings
+from app.admin.admin_main import init_admin
+from starlette.middleware.sessions import SessionMiddleware
 
-app = FastAPI(
+
+app = FastAPI( 
     title = "Oguzabat API",
     version = "0.1.0"
 )
@@ -30,3 +34,7 @@ app.include_router(partner.router)
 app.include_router(contact.router)
 app.include_router(application.router)
 app.include_router(vacancy.router)
+
+
+app.add_middleware(SessionMiddleware, secret_key = settings.SECRET_KEY)
+init_admin(app, engine)

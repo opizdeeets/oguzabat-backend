@@ -49,7 +49,9 @@ async def update_user(db: AsyncSession, user_id: int, **fields) -> Optional[User
     db_user = result.scalars().first()
     if not db_user:
         return None
-    for k,v in fields.items():
+    # Prevent clients from updating created_at
+    fields.pop("created_at", None)
+    for k, v in fields.items():
         setattr(db_user, k, v)
     await db.commit()
     await db.refresh(db_user)

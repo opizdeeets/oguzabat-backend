@@ -20,7 +20,7 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         created = await create_user(db, user_in.username, user_in.email, user_in.password)
         return created
     except Exception:
-        raise HTTPException(status_code=500, details="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error")
     
 
 @router.post("/token", response_model=Token)

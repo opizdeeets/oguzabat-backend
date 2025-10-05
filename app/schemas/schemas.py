@@ -39,6 +39,7 @@ class UserRead(BaseModel):
     username: str
     email: EmailStr
     is_admin: bool
+    created_at: datetime
 
     class Config:
         orm_mode = True

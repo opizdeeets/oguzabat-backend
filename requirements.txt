@@ -1,0 +1,43 @@
+# ---------------- CORE ----------------
+fastapi==0.116.1
+starlette==0.41.2                # FastAPI построен на Starlette (ASGI), требуется явно для совместимости
+uvicorn[standard]==0.35.0        # сервер с uvloop, httptools, websockets, watchfiles и т.д.
+pydantic==2.9.2                  # модели данных (используются в схемах и зависимостях)
+pydantic-settings==2.6.1         # загрузка конфигов из .env через Pydantic v2 Settings Management
+
+# ---------------- DATABASE ----------------
+SQLAlchemy==2.0.43
+asyncpg==0.30.0                  # драйвер PostgreSQL для AsyncEngine
+alembic==1.16.5                  # миграции базы данных
+sqladmin[full]==0.21.0           # админ-панель на основе SQLAlchemy + FastAPI
+greenlet==3.1.1                  # требуется SQLAlchemy для async
+psycopg2-binary==2.9.9           # sync-драйвер (Alembic использует при миграциях)
+
+# ---------------- SECURITY ----------------
+PyJWT==2.10.1
+passlib==1.7.4
+argon2-cffi==25.1.0
+python-multipart==0.0.9          # нужно FastAPI для форм (OAuth2PasswordRequestForm)
+itsdangerous==2.2.0              # для токенов/подписей, опционально в SQLAdmin
+
+# ---------------- ASGI UTILS ----------------
+aiofiles==24.1.0                 # для загрузки/отдачи файлов
+jinja2==3.1.4                    # шаблонизатор (используется SQLAdmin)
+email-validator==2.2.0           # проверка email для Pydantic моделей
+python-dotenv==1.1.1             # .env конфигурация
+typing-extensions==4.12.2        # для поддержки typing (FastAPI требует)
+
+# ---------------- LOGGING / MONITORING ----------------
+loguru==0.7.2                    # структурированные логи
+sentry-sdk==2.19.0               # отчёты об ошибках (если планируется продакшен)
+rich==13.9.2                     # красивый вывод в консоль (uvicorn + alembic logs)
+
+# ---------------- DEV / TEST ----------------
+pytest==8.4.2
+pytest-asyncio==0.21.0
+pytest-cov==4.1.0
+httpx==0.28.1                    # HTTP клиент для тестов
+black==24.8.0
+ruff==0.6.9
+isort==5.12.0
+mypy==1.11.1                     # статический анализ типов
