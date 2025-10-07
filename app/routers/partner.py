@@ -1,92 +1,86 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, Body
+from fastapi import APIRouter, Depends, UploadFile, Form, Path, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from typing import List, Optional
 
 from app.core.db import get_db
-from app.core.deps import get_current_admin_user
-from app.models.models import Partner
+from app.core.deps import get_current_user  # JWT авторизация
 from app.schemas.schemas import PartnerCreate, PartnerUpdate, PartnerRead, Message
 from app.services import partner_service as partner_crud
+from app.core.uploads import save_uploaded_file, update_entity  # универсальный аплоудер
 
 router = APIRouter(prefix="/partners", tags=["partners"])
 
+# ---------------- CREATE ----------------
 @router.post("/", response_model=PartnerRead, status_code=status.HTTP_201_CREATED)
 async def create_partner(
-    partner_in: PartnerCreate = Body(..., description="Partner data to create"),
+    name: str = Form(..., description="Название партнёра"),
+    description: str = Form(..., description="Описание партнёра"),
+    website: str = Form(..., description="Сайт партнёра"),
+    logo: Optional[UploadFile] = None,
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    user: dict = Depends(get_current_user),  # JWT только здесь
 ):
-    try:
-        created = await partner_crud.create_partner(db, partner_in)
-        return created
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Could not create partner. Possibly duplicate or invalid fields.")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    logo_path = None
+    if logo:
+        logo_path = await save_uploaded_file(logo, sub_dir="partners", max_size_mb=2)
 
-@router.get("/", response_model=List[PartnerRead])
-async def get_partners(
-    db: AsyncSession = Depends(get_db)
-):
+    partner_in = PartnerCreate(
+        name=name,
+        description=description,
+        website=website,
+        logo_path=logo_path or "",
+    )
     try:
-        items = await partner_crud.get_partners(db)
-        return items
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return await partner_crud.create_partner(db, partner_in)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка создания партнёра: {e}")
 
-@router.get("/{partner_id}", response_model=PartnerRead)
-async def get_partner(
-    partner_id: int = Path(..., gt=0, example=1, description="Partner ID"),
-    db: AsyncSession = Depends(get_db)
-):
-    try:
-        partner = await partner_crud.get_partner(db, partner_id)
-        if not partner:
-            raise HTTPException(status_code=404, detail="Partner not found")
-        return partner
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
 
+# ---------------- UPDATE ----------------
 @router.put("/{partner_id}", response_model=PartnerRead)
 async def update_partner(
-    partner_id: int = Path(..., gt=0, example=1, description="Partner ID"),
-    partner_in: PartnerUpdate = Body(..., description="Partner data to update"),
+    partner_id: int = Path(..., gt=0),
+    partner_in: PartnerUpdate = Form(...),
+    logo: Optional[UploadFile] = None,
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    user: dict = Depends(get_current_user),  # JWT только здесь
 ):
-    try:
-        updated = await partner_crud.update_partner(db, partner_id, partner_in.dict(exclude_unset=True))
-        if not updated:
-            raise HTTPException(status_code=404, detail="Partner not found")
-        return updated
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Could not update partner. Possibly duplicate or invalid fields.")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    return await update_entity(
+        db=db,
+        entity_id=partner_id,
+        entity_in=partner_in,
+        crud_update_func=partner_crud.update_partner,
+        file=logo,
+        file_sub_dir="partners",
+    )
 
+
+# ---------------- GET LIST ----------------
+@router.get("/", response_model=List[PartnerRead])
+async def list_partners(db: AsyncSession = Depends(get_db)):
+    try:
+        return await partner_crud.get_partners(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения списка партнёров: {e}")
+
+
+# ---------------- GET SINGLE ----------------
+@router.get("/{partner_id}", response_model=PartnerRead)
+async def get_partner(partner_id: int = Path(..., gt=0), db: AsyncSession = Depends(get_db)):
+    partner = await partner_crud.get_partner(db, partner_id)
+    if not partner:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    return partner
+
+
+# ---------------- DELETE ----------------
 @router.delete("/{partner_id}", response_model=Message)
 async def delete_partner(
-    partner_id: int = Path(..., gt=0, example=1, description="Partner ID"),
+    partner_id: int = Path(..., gt=0),
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    user: dict = Depends(get_current_user),  # JWT только здесь
 ):
-    try:
-        deleted = await partner_crud.delete_partner(db, partner_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Partner not found")
-        return {"success": True, "message": "Partner deleted successfully"}
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Could not delete partner. Possibly dependent records exist.")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    deleted = await partner_crud.delete_partner(db, partner_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    return {"success": True, "message": "Partner deleted successfully"}

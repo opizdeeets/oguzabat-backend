@@ -5,7 +5,7 @@ from fastapi import HTTPException, UploadFile
 from typing import List, Optional
 
 from app.models.models import Application, ApplicationFile
-from app.core.file_upload import save_upload_file, delete_upload_file
+from app.core.uploads import upload_company_logo, delete_upload_file
 
 # ---------------- CREATE ----------------
 async def create_application(
@@ -26,7 +26,7 @@ async def create_application(
 
             for file in files:
                 print(f"application_service: saving file {file.filename}")
-                url = await save_upload_file(file)
+                url = await upload_company_logo(file)
                 print(f"application_service: saved file to {url}")
                 file_objs.append(ApplicationFile(file_url=url))
 
@@ -110,7 +110,7 @@ async def update_application(
         if not isinstance(new_files, list):
             new_files = [new_files]
         for f in new_files:
-            url = await save_upload_file(f)
+            url = await upload_company_logo(f)
             app_obj.files.append(ApplicationFile(file_url=url))
 
     await db.commit()

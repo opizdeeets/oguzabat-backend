@@ -41,7 +41,7 @@ class News(Base):
     title = Column(String, nullable=False)
     short_description = Column(String)
     full_text = Column(Text)
-    image_url = Column(String)
+    image_path = Column(String)
     date = Column(DateTime, nullable=False)
 
 # ---------- Company ----------
@@ -51,8 +51,7 @@ class Company(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     description = Column(Text)
-    gallery = Column(ARRAY(String), nullable=False, default=[])
-    logo_url = Column(String, nullable=False)
+    logo_path = Column(String, nullable=False)
     website = Column(String, nullable=False)
     categories = Column(ARRAY(String), nullable=False, default=[])
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
@@ -89,7 +88,7 @@ class Partner(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     slogan = Column(String, nullable=False)
-    logo_url = Column(String, nullable=False)
+    logo_path = Column(String, nullable=False)
     short_description = Column(String, nullable=False)
     tags = Column(ARRAY(String), nullable=False, default=[])
     email = Column(String, nullable=False)

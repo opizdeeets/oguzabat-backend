@@ -1,17 +1,18 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import traceback
-from app.routers import company, news, project, about_gallery, partner, contact, application, vacancy, auth
+from app.routers import company, news, project, about_gallery, partner, contact, application, vacancy
 from app.models.models import *
 from app.core.db import engine, Base
-from app.core.config import settings
-from app.admin.admin_main import init_admin
-from starlette.middleware.sessions import SessionMiddleware
+# from app.core.config import settings
+# from app.admin.admin_main import init_admin
+# from starlette.middleware.sessions import SessionMiddleware
 
 
 app = FastAPI( 
     title = "Oguzabat API",
-    version = "0.1.0"
+    version = "0.1.0",
+    debug = True,
 )
 
 
@@ -25,7 +26,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-app.include_router(auth.router)
+# app.include_router(auth.router)
 app.include_router(company.router)
 app.include_router(news.router)
 app.include_router(project.router)
@@ -35,6 +36,3 @@ app.include_router(contact.router)
 app.include_router(application.router)
 app.include_router(vacancy.router)
 
-
-app.add_middleware(SessionMiddleware, secret_key = settings.SECRET_KEY)
-init_admin(app, engine)

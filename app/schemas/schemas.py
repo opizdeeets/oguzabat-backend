@@ -102,7 +102,7 @@ class NewsBase(BaseModel):
     title: Optional[str] = Field(None, description="Заголовок новости", example="Новости Oguzabat: Запуск нового проекта")
     short_description: Optional[str] = Field(None, description="Краткое описание новости", example="Компания Oguzabat объявила о запуске нового инфраструктурного проекта...")
     full_text: Optional[str] = Field(None, description="Полный текст новости", example="Подробности о новом проекте...")
-    image_url: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
+    image_path: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
     date: Optional[datetime] = Field(None, description="Дата публикации новости", example="2025-01-10T12:00:00")
 
 
@@ -120,6 +120,7 @@ class NewsRead(NewsBase):
     id: int = Field(..., description="ID новости", example=1)
     date: datetime = Field(..., description="Дата публикации новости", example="2025-01-10T12:00:00")
     recommendations: List[NewsRecommendationRead] = Field(default_factory=list, description="Рекомендованные новости")
+    image_path: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -128,7 +129,7 @@ class NewsRead(NewsBase):
 class CompanyBase(BaseModel):
     name: Optional[str] = Field(None, description="Название компании", example="Oguzabat Tech")
     description: Optional[str] = Field(None, description="Описание компании", example="Leading tech company in Central Asia")
-    logo_url: Optional[str] = Field(None, description="URL логотипа компании", example="/img/oguzabat_tech.png")
+    logo_path: Optional[str] = Field(None, description="URL логотипа компании", example="/img/oguzabat_tech.png")
     website: Optional[str] = Field(None, description="Сайт компании", example="https://oguzabat.com")
     categories: List[str] = Field(default_factory=list, description="Категории компании", example=["IT", "Engineering"])
     created_at: Optional[datetime] = Field(None, description="Дата создания записи о компании", example="2025-01-01T00:00:00")
@@ -138,7 +139,7 @@ class CompanyBase(BaseModel):
 class CompanyCreate(CompanyBase):
     name: str = Field(..., description="Название компании", example="Oguzabat Tech")
     description: str = Field(..., description="Описание компании", example="Leading tech company in Central Asia")
-    logo_url: str = Field(..., description="URL логотипа компании", example="/img/oguzabat_tech.png")
+    logo_path: str = Field(..., description="URL логотипа компании", example="/img/oguzabat_tech.png")
     website: str = Field(..., description="Сайт компании", example="https://oguzabat.com")
     categories: List[str] = Field(default_factory=list, description="Категории компании", example=["IT", "Engineering"])
 
@@ -149,9 +150,7 @@ class CompanyUpdate(CompanyBase):
 
 class CompanyRead(CompanyBase):
     id: int = Field(..., description="ID компании", example=1)
-    created_at: datetime = Field(..., description="Дата создания записи о компании", example="2025-01-01T00:00:00")
-    updated_at: Optional[datetime] = Field(None, description="Дата последнего обновления записи", example="2025-01-05T10:00:00")
-    projects: List[ProjectReadMin] = Field(default_factory=list, description="Проекты компании")
+
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -164,7 +163,7 @@ class Message(BaseModel):
 class PartnerBase(BaseModel):
     name: Optional[str] = Field(None, description="Название партнера", example="Partner A")
     slogan: Optional[str] = Field(None, description="Слоган партнера", example="Building Together")
-    logo_url: Optional[str] = Field(None, description="URL логотипа партнера", example="/img/partner_a.png")
+    logo_path: Optional[str] = Field(None, description="URL логотипа партнера", example="/img/partner_a.png")
     short_description: Optional[str] = Field(None, description="Краткое описание партнера", example="Leading construction partner")
     tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
     email: Optional[str] = Field(None, description="Email партнера", example="contact@partnera.com")
@@ -173,7 +172,7 @@ class PartnerBase(BaseModel):
 class PartnerCreate(PartnerBase):
     name: str = Field(..., description="Название партнера", example="Partner A")
     slogan: str = Field(..., description="Слоган партнера", example="Building Together")
-    logo_url: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
+    logo_path: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
     short_description: str = Field(..., description="Краткое описание партнера", example="Leading construction partner")
     tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
     email: str = Field(..., description="Email партнера", example="contact@partnera.com")
@@ -187,7 +186,7 @@ class PartnerRead(PartnerBase):
     id: int = Field(..., description="ID партнера", example=1)
     name: str = Field(..., description="Название партнера", example="Partner A")
     slogan: str = Field(..., description="Слоган партнера", example="Building Together")
-    logo_url: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
+    logo_path: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
     short_description: str = Field(..., description="Краткое описание партнера", example="Leading construction partner")
     tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
     email: str = Field(..., description="Email партнера", example="contact@partnera.com")
