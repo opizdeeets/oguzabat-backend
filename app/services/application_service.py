@@ -5,7 +5,7 @@ from fastapi import HTTPException, UploadFile
 from typing import List, Optional
 
 from app.models.models import Application, ApplicationFile
-from app.core.uploads import upload_company_logo, delete_upload_file
+from app.core.uploads import save_uploaded_file, delete_uploaded_file
 
 # ---------------- CREATE ----------------
 async def create_application(
@@ -14,20 +14,18 @@ async def create_application(
     files: Optional[List[UploadFile]] = None
 ) -> Application:
     """
-    Создаёт отклик с возможностью загружать файлы.
+    Создаёт отклик с возможностью загружать файлы (изображения/PDF).
     Возвращает объект с полностью загруженными relationships.
     """
     try:
         file_objs = []
         if files:
-            # Если передан один файл как UploadFile, превращаем в список
             if not isinstance(files, list):
                 files = [files]
 
             for file in files:
-                print(f"application_service: saving file {file.filename}")
-                url = await upload_company_logo(file)
-                print(f"application_service: saved file to {url}")
+                # Сохраняем файл в папку 'applications'
+                url = await save_uploaded_file(file, sub_dir="applications")
                 file_objs.append(ApplicationFile(file_url=url))
 
         # Создаём объект и добавляем в сессию
@@ -35,14 +33,13 @@ async def create_application(
         db.add(app_obj)
         await db.commit()
 
-        # Обновляем объект из базы, чтобы relationships были полностью загружены
+        # Загружаем объект полностью с relationships
         stmt = select(Application).where(Application.id == app_obj.id).options(
             selectinload(Application.files),
             selectinload(Application.vacancy)
         )
         result = await db.execute(stmt)
-        app_obj = result.scalars().first()
-        return app_obj
+        return result.scalars().first()
 
     except Exception:
         await db.rollback()
@@ -62,9 +59,7 @@ async def get_applications(db: AsyncSession, vacancy_id: Optional[int] = None) -
             stmt = stmt.where(Application.vacancy_id == vacancy_id)
 
         result = await db.execute(stmt)
-        applications = result.scalars().all()
-        return applications
-
+        return result.scalars().all()
     except Exception:
         raise
 
@@ -91,6 +86,7 @@ async def update_application(
     Обновляет поля отклика и добавляет новые файлы при необходимости.
     Возвращает объект с загруженными relationships.
     """
+    # Загружаем текущий объект
     result = await db.execute(
         select(Application).where(Application.id == application_id).options(
             selectinload(Application.files)
@@ -100,7 +96,7 @@ async def update_application(
     if not app_obj:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    # Обновляем поля объекта
+    # Обновляем поля
     for k, v in update_data.items():
         if v is not None:
             setattr(app_obj, k, v)
@@ -109,20 +105,19 @@ async def update_application(
     if new_files:
         if not isinstance(new_files, list):
             new_files = [new_files]
-        for f in new_files:
-            url = await upload_company_logo(f)
+        for file in new_files:
+            url = await save_uploaded_file(file, sub_dir="applications")
             app_obj.files.append(ApplicationFile(file_url=url))
 
     await db.commit()
 
-    # Повторно загружаем объект с files и vacancy
+    # Повторно загружаем объект с relationships
     stmt = select(Application).where(Application.id == app_obj.id).options(
         selectinload(Application.files),
         selectinload(Application.vacancy)
     )
     result = await db.execute(stmt)
-    app_obj = result.scalars().first()
-    return app_obj
+    return result.scalars().first()
 
 # ---------------- DELETE ----------------
 async def delete_application(db: AsyncSession, application_id: int) -> bool:
@@ -138,8 +133,9 @@ async def delete_application(db: AsyncSession, application_id: int) -> bool:
     if not app_obj:
         return False
 
+    # Удаляем файлы с диска
     for f in app_obj.files:
-        await delete_upload_file(f.file_url)
+        await delete_uploaded_file(f.file_url)
 
     await db.delete(app_obj)
     await db.commit()
