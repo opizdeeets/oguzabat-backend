@@ -1,12 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from sqlalchemy.future import select
-from sqlalchemy import delete
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from fastapi import UploadFile, HTTPException
 from typing import List, Optional
+import traceback
 
-from app.models.models import Project, ProjectGallery, Company
+from app.models.models import Project
 from app.schemas.schemas import ProjectCreate, ProjectUpdate
 from app.core.uploads import save_uploaded_file, delete_uploaded_file
 
@@ -18,55 +17,52 @@ async def create_project(
 ) -> Project:
     """
     Создаёт проект с возможной галереей изображений.
+    gallery - список ссылок.
     """
     try:
-        gallery_objs = []
+        gallery_urls = []
         if gallery_files:
             if not isinstance(gallery_files, list):
                 gallery_files = [gallery_files]
             for f in gallery_files:
                 url = await save_uploaded_file(f, sub_dir="project_gallery")
-                gallery_objs.append(ProjectGallery(file_url=url))
+                gallery_urls.append(url)
 
-        db_project = Project(**project_in.dict(), gallery=gallery_objs)
+        db_project = Project(**project_in.dict(), gallery=gallery_urls)
         db.add(db_project)
         await db.commit()
-
-        result = await db.execute(
-            select(Project)
-            .options(selectinload(Project.company), selectinload(Project.gallery))
-            .where(Project.id == db_project.id)
-        )
-        return result.scalars().first()
+        await db.refresh(db_project)
+        return db_project
     except IntegrityError:
         await db.rollback()
         raise
     except SQLAlchemyError:
         await db.rollback()
         raise
+    except Exception as e:
+        await db.rollback()
+        print("Error in create_project:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # ---------------- READ ONE ----------------
 async def get_project(db: AsyncSession, project_id: int) -> Optional[Project]:
     try:
-        result = await db.execute(
-            select(Project)
-            .options(selectinload(Project.company), selectinload(Project.gallery))
-            .where(Project.id == project_id)
-        )
+        result = await db.execute(select(Project).where(Project.id == project_id))
         return result.scalars().first()
     except SQLAlchemyError:
-        raise
+        raise HTTPException(status_code=500, detail="Database error")
 
 # ---------------- READ ALL ----------------
 async def get_projects(db: AsyncSession, company_id: Optional[int] = None) -> List[Project]:
     try:
-        stmt = select(Project).options(selectinload(Project.company), selectinload(Project.gallery))
+        stmt = select(Project)
         if company_id:
             stmt = stmt.where(Project.company_id == company_id)
         result = await db.execute(stmt)
         return result.scalars().all()
     except SQLAlchemyError:
-        raise
+        raise HTTPException(status_code=500, detail="Database error")
 
 # ---------------- UPDATE ----------------
 async def update_project(
@@ -75,46 +71,57 @@ async def update_project(
     project_in: ProjectUpdate,
     new_gallery_files: Optional[List[UploadFile]] = None
 ) -> Optional[Project]:
-    result = await db.execute(select(Project).where(Project.id == project_id).options(selectinload(Project.gallery)))
-    db_project = result.scalars().first()
-    if not db_project:
-        return None
+    try:
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        db_project = result.scalars().first()
+        if not db_project:
+            return None
 
-    update_data = project_in.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(db_project, field, value)
+        update_data = project_in.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(db_project, field, value)
 
-    # Добавляем новые файлы в галерею
-    if new_gallery_files:
-        if not isinstance(new_gallery_files, list):
-            new_gallery_files = [new_gallery_files]
-        for f in new_gallery_files:
-            url = await save_uploaded_file(f, sub_dir="project_gallery")
-            db_project.gallery.append(ProjectGallery(file_url=url))
+        if new_gallery_files:
+            gallery_urls = db_project.gallery.copy() if db_project.gallery else []
+            if not isinstance(new_gallery_files, list):
+                new_gallery_files = [new_gallery_files]
+            for f in new_gallery_files:
+                url = await save_uploaded_file(f, sub_dir="project_gallery")
+                gallery_urls.append(url)
+            db_project.gallery = gallery_urls
 
-    await db.commit()
-
-    # Перезагружаем объект с company и gallery
-    result = await db.execute(
-        select(Project)
-        .options(selectinload(Project.company), selectinload(Project.gallery))
-        .where(Project.id == project_id)
-    )
-    return result.scalars().first()
+        await db.commit()
+        await db.refresh(db_project)
+        return db_project
+    except IntegrityError:
+        await db.rollback()
+        raise
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        print("Error in update_project:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 # ---------------- DELETE ----------------
 async def delete_project(db: AsyncSession, project_id: int) -> bool:
-    result = await db.execute(
-        select(Project).where(Project.id == project_id).options(selectinload(Project.gallery))
-    )
-    db_project = result.scalars().first()
-    if not db_project:
-        return False
+    try:
+        result = await db.execute(select(Project).where(Project.id == project_id))
+        db_project = result.scalars().first()
+        if not db_project:
+            return False
 
-    # Удаляем файлы галереи
-    for f in db_project.gallery:
-        await delete_uploaded_file(f.file_url)
+        if db_project.gallery:
+            for url in db_project.gallery:
+                await delete_uploaded_file(url)
 
-    await db.delete(db_project)
-    await db.commit()
-    return True
+        await db.delete(db_project)
+        await db.commit()
+        return True
+    except Exception as e:
+        await db.rollback()
+        print("Error in delete_project:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Internal server error")
