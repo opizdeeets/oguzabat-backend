@@ -22,7 +22,7 @@ async def create_partner(
 ):
     logo_path = None
     if logo:
-        logo_path = await save_uploaded_file(logo, sub_dir="partners", max_size_mb=2)
+        logo_path = await save_uploaded_file(logo, sub_dir="partners")
 
     partner_in = PartnerCreate(
         name=name,

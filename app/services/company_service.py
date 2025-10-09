@@ -25,8 +25,11 @@ async def create_company(
         logo_path = None
         if logo_file:
             logo_path = await save_uploaded_file(logo_file, "logos")
-
-        db_company = Company(**company_in.dict(), logo_path=logo_path)
+            print("DEBUG: logo_path =", logo_path)
+        else:
+            print("DEBUG: logo_file not provided")
+        company_data_dict = company_in.dict(exclude={"logo_path"})
+        db_company = Company(**company_data_dict, logo_path=logo_path)
         db.add(db_company)
         await db.commit()
         await db.refresh(db_company)

@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import UploadFile, HTTPException, status
 import aiofiles
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from pydantic import BaseModel
 
 # ---------------- КОНФИГУРАЦИЯ ----------------
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # корень проекта
@@ -101,29 +102,35 @@ async def replace_uploaded_file(old_file_url: str, new_file: UploadFile | None, 
     return await save_uploaded_file(new_file, sub_dir)
 
 async def update_entity(
-    db, entity_id: int, entity_in, crud_update_func,
-    file: UploadFile = None, file_sub_dir: str = None
+    db,  # AsyncSession
+    entity_id: int,
+    entity_in,  # Pydantic-модель или dict
+    crud_update_func,  # функция update(db, id, dict)
+    file: UploadFile = None,
+    file_sub_dir: str = None
 ):
-    """Универсальное обновление сущности с поддержкой файла."""
-    updated_data = entity_in.dict(exclude_unset=True)
+    # Преобразуем в dict, если Pydantic
+    if isinstance(entity_in, BaseModel):
+        updated_data = {k: v for k, v in entity_in.dict(exclude_unset=True).items() if v is not None}
+    elif isinstance(entity_in, dict):
+        updated_data = {k: v for k, v in entity_in.items() if v is not None}
+    else:
+        raise TypeError("entity_in должен быть Pydantic-моделью или словарём")
 
+    # Обработка файла
     if file is not None and file_sub_dir is not None:
-        new_file_path = await save_uploaded_file(file, file_sub_dir)
-        old_entity = await crud_update_func(db, entity_id, {})  # старый объект
+        old_entity = await crud_update_func(db, entity_id, {})  # для старого пути
         old_path_attr = file_sub_dir + "_path"
         if old_entity and getattr(old_entity, old_path_attr, None):
             await delete_uploaded_file(getattr(old_entity, old_path_attr))
+        new_file_path = await save_uploaded_file(file, file_sub_dir)
         updated_data[old_path_attr] = new_file_path
 
     try:
         updated_entity = await crud_update_func(db, entity_id, updated_data)
         if not updated_entity:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found")
+            raise HTTPException(status_code=404, detail="Entity not found")
         return updated_entity
-    except IntegrityError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate or invalid fields")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database error")
     except Exception as e:
         print("Unexpected error in update_entity:", e)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error")

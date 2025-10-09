@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, UploadFile, Form, Body, Path, status, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+from datetime import datetime
+from fastapi import APIRouter, Depends, UploadFile, Form, Path, status, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import get_current_user  # JWT auth
+from app.core.deps import get_current_user
 from app.schemas.schemas import NewsCreate, NewsUpdate, NewsRead, Message
 from app.services import news_service as crud_news
-from app.core.uploads import save_uploaded_file, update_entity  # наш универсальный аплоудер
+from app.core.uploads import update_entity
 
 router = APIRouter(prefix="/news", tags=["news"])
 
@@ -14,22 +15,21 @@ router = APIRouter(prefix="/news", tags=["news"])
 @router.post("/", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
 async def create_news(
     title: str = Form(...),
-    content: str = Form(...),
+    short_description: str = Form(...),
+    full_text: str = Form(...),
+    date: Optional[datetime] = Form(None),
     file: Optional[UploadFile] = None,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
+    user: dict = Depends(get_current_user),
 ):
-    file_path = None
-    if file:
-        file_path = await save_uploaded_file(file, sub_dir="news_files")
-
     news_in = NewsCreate(
         title=title,
-        content=content,
-        file_path=file_path or ""
+        short_description=short_description,
+        full_text=full_text,
+        date=date or datetime.utcnow()
     )
     try:
-        return await crud_news.create_news(db, news_in)
+        return await crud_news.create_news(db=db, news_in=news_in, file=file)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка создания новости: {e}")
 
@@ -38,19 +38,21 @@ async def create_news(
 @router.put("/{news_id}", response_model=NewsRead)
 async def update_news(
     news_id: int = Path(..., gt=0),
-    news_in: NewsUpdate = Body(...),
+    title: Optional[str] = Form(None),
+    short_description: Optional[str] = Form(None),
+    full_text: Optional[str] = Form(None),
+    date: Optional[datetime] = Form(None),
     file: Optional[UploadFile] = None,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
+    user: dict = Depends(get_current_user),
 ):
-    return await update_entity(
-        db=db,
-        entity_id=news_id,
-        entity_in=news_in,
-        crud_update_func=crud_news.update_news,
-        file=file,
-        file_sub_dir="news_files",
+    news_in = NewsUpdate(
+        title=title,
+        short_description=short_description,
+        full_text=full_text,
+        date=date
     )
+    return await crud_news.update_news(db=db, news_id=news_id, news_in=news_in, file=file)
 
 
 # ---------------- GET LIST ----------------
@@ -80,7 +82,7 @@ async def get_news(news_id: int = Path(..., gt=0), db: AsyncSession = Depends(ge
 async def delete_news(
     news_id: int = Path(..., gt=0),
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
+    user: dict = Depends(get_current_user),
 ):
     deleted = await crud_news.delete_news(db, news_id)
     if not deleted:

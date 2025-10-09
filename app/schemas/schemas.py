@@ -1,8 +1,10 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, validator
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 from app.models.models import ProjectStatus, EmploymentType
 from fastapi import File, UploadFile
+from enum import Enum
+
 
 # ---------- XReadMin ----------
 class ProjectReadMin(BaseModel):
@@ -61,19 +63,32 @@ class ProjectBase(BaseModel):
     name: Optional[str] = Field(None, description="Название проекта", example="Smart City B")
     type: Optional[str] = Field(None, description="Тип проекта", example="Infrastructure")
     location: Optional[str] = Field(None, description="Местоположение проекта", example="Ashgabat, Turkmenistan")
-    opened_date: Optional[datetime] = Field(None, description="Дата начала проекта", example="2025-01-15T00:00:00")
+    opened_date: date = Field(default_factory=date.today)
     status: Optional[ProjectStatus] = Field(ProjectStatus.Pending, description="Статус проекта", example=ProjectStatus.Active)
     short_description: Optional[str] = Field(None, description="Краткое описание проекта", example="Urban infrastructure upgrade")
     full_description: Optional[str] = Field(None, description="Полное описание проекта", example="Comprehensive urban development project...")
     gallery: List[str] = Field(default_factory=list, description="Ссылки на изображения проекта", example=["/img/project1.jpg", "/img/project2.jpg"])
 
 
-class ProjectCreate(ProjectBase):
-    company_id: int = Field(..., description="ID компании, которой принадлежит проект", example=1)
-    name: str = Field(..., description="Название проекта", example="Smart City B")
-    type: str = Field(..., description="Тип проекта", example="Infrastructure")
-    opened_date: datetime = Field(..., description="Дата начала проекта", example="2025-01-15T00:00:00")
-    short_description: str = Field(..., description="Краткое описание проекта", example="Urban infrastructure upgrade")
+class ProjectCreate(BaseModel):
+    company_id: int
+    name: str
+    type: str
+    location: str
+    opened_date: Optional[datetime] = None
+    status: ProjectStatus = ProjectStatus.Pending
+    short_description: str
+    full_description: str
+    gallery: Optional[List[str]] = []
+
+    @validator("opened_date", pre=True, always=True)
+    def parse_opened_date(cls, v):
+        # Если ничего не передано, ставим UTC naive now
+        if v is None or v == "":
+            return datetime.utcnow()
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
 
 
 class ProjectUpdate(ProjectBase):
@@ -83,6 +98,7 @@ class ProjectUpdate(ProjectBase):
 class ProjectRead(ProjectBase):
     id: int = Field(..., description="ID проекта", example=1)
     name: str = Field(..., description="Название проекта", example="Smart City B")
+    opened_date: Optional[datetime] = None
     short_description: str = Field(..., description="Краткое описание проекта", example="Urban infrastructure upgrade")
     gallery: List[str] = Field(default_factory=list, description="Ссылки на изображения проекта", example=["/img/project1.jpg", "/img/project2.jpg"])
     company: Optional[CompanyReadMin] = Field(None, description="Информация о компании")
@@ -103,7 +119,7 @@ class NewsBase(BaseModel):
     short_description: Optional[str] = Field(None, description="Краткое описание новости", example="Компания Oguzabat объявила о запуске нового инфраструктурного проекта...")
     full_text: Optional[str] = Field(None, description="Полный текст новости", example="Подробности о новом проекте...")
     image_path: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
-    date: Optional[datetime] = Field(None, description="Дата публикации новости", example="2025-01-10T12:00:00")
+    date: Optional[datetime] = Field(None, description="Дата публикации новости", example="2025-01-10T12       :00:00")
 
 
 class NewsCreate(NewsBase):

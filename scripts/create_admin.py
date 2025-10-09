@@ -1,13 +1,9 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import asyncio
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from app.core.config import settings
-from app.core.db import Base 
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from app.models.models import User
 from app.core.security import hash_password
 
+# 🔧 Прямое подключение — без settings
 DATABASE_URL = "postgresql+asyncpg://oguzabat_admin:oguzabat@localhost:5432/oguzabat_db"
 
 engine = create_async_engine(DATABASE_URL, echo=True)
@@ -18,11 +14,17 @@ async def main():
         username = "admin"
         email = "admin@example.com"
         password = "changeme"
+
         hashed = hash_password(password)
-        user = User(username=username, email=email, hashed_password=hashed, is_admin=True)
-        db.add(user)
+        admin = User(
+            username=username,
+            email=email,
+            hashed_password=hashed,
+            is_admin=True
+        )
+        db.add(admin)
         await db.commit()
-        print("Admin created:", username)
+        print(f"✅ Админ создан: {username} ({email})")
 
 if __name__ == "__main__":
-    asyncio.run(main())        
+    asyncio.run(main())

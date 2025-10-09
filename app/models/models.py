@@ -4,7 +4,8 @@ from sqlalchemy.orm import relationship
 from app.core.db import Base
 from sqlalchemy.sql import func
 import enum
-import datetime 
+import datetime
+
 
 # ---------- User ----------
 class User(Base):
@@ -51,7 +52,7 @@ class Company(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False, unique=True)
     description = Column(Text)
-    logo_path = Column(String, nullable=False)
+    logo_path = Column(String, nullable=True)
     website = Column(String, nullable=False)
     categories = Column(ARRAY(String), nullable=False, default=[])
     created_at = Column(DateTime, nullable=False, default=datetime.datetime.utcnow)
@@ -73,7 +74,7 @@ class Project(Base):
     name = Column(String, nullable=False)
     type = Column(String, nullable=False)
     location = Column(String, nullable=True)
-    opened_date = Column(DateTime, nullable=False)
+    opened_date = Column(DateTime, default=datetime.datetime.utcnow)
     status = Column(SQLEnum(ProjectStatus), nullable=False, default=ProjectStatus.Pending)
     short_description = Column(String, nullable=False)
     full_description = Column(Text)

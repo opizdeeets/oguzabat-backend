@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
 from app.core.db import get_db
-from app.core.deps import get_current_user  # JWT
+from app.core.deps import get_current_user, get_current_admin_user
 from app.schemas.schemas import CompanyCreate, CompanyUpdate, CompanyRead, Message
 from app.services import company_service as crud_company
 from app.core.uploads import save_uploaded_file, update_entity  # универсальный аплоудер
@@ -24,7 +24,7 @@ async def create_company(
     categories_list = [c.strip() for c in categories.split(",") if c.strip()]
     logo_path = None
     if logo:
-        logo_path = await save_uploaded_file(logo, sub_dir="logos", max_size_mb=2)
+        logo_path = await save_uploaded_file(logo, sub_dir="logos")
 
     company_in = CompanyCreate(
         name=name,
@@ -39,22 +39,29 @@ async def create_company(
         raise HTTPException(status_code=500, detail=f"Ошибка создания компании: {e}")
 
 
-# ---------------- UPDATE ----------------
+# ---------------- UPDATE COMPANY ----------------
 @router.put("/{company_id}", response_model=CompanyRead)
 async def update_company(
     company_id: int = Path(..., gt=0),
-    company_in: CompanyUpdate = Form(...),
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
     logo: Optional[UploadFile] = None,
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
+    user: dict = Depends(get_current_user),
 ):
+    company_in = CompanyUpdate(
+        name=name,
+        description=description,
+        website=website
+    )
     return await update_entity(
         db=db,
         entity_id=company_id,
         entity_in=company_in,
         crud_update_func=crud_company.update_company,
         file=logo,
-        file_sub_dir="logos",
+        file_sub_dir="company_logos"
     )
 
 
