@@ -1,40 +1,37 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, validator
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import List, Optional
 from datetime import datetime, date
 from app.models.models import ProjectStatus, EmploymentType
-from fastapi import File, UploadFile
-from enum import Enum
 
 
 # ---------- XReadMin ----------
 class ProjectReadMin(BaseModel):
-    id: int = Field(..., description="ID проекта", example=1)
-    name: str = Field(..., description="Название проекта", example="Smart City B")
-    short_description: str = Field(..., description="Краткое описание проекта", example="Urban infrastructure upgrade")
-    status: ProjectStatus = Field(..., description="Статус проекта", example=ProjectStatus.Active)
-
+    id: int
+    name: str
+    short_description: str
+    status: ProjectStatus
     model_config = ConfigDict(from_attributes=True)
 
 
 class CompanyReadMin(BaseModel):
-    id: int = Field(..., description="ID компании", example=1)
-    name: str = Field(..., description="Название компании", example="Oguzabat Tech")
-    logo_url: str = Field(..., description="URL логотипа компании", example="/img/oguzabat_tech.png")
-
-    model_config = ConfigDict(from_attributes=True)  
+    id: int
+    name: str
+    logo_url: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class VacancyReadMinimal(BaseModel):
-    id: int = Field(..., description="ID вакансии")
-    title: str = Field(..., description="Название вакансии")
-
+    id: int
+    title: str
     model_config = ConfigDict(from_attributes=True)
+
 
 # ---------- User ----------
 class UserCreate(BaseModel):
     username: str
-    email: EmailStr  
-    password: str  
+    email: EmailStr
+    password: str
+
 
 class UserRead(BaseModel):
     id: int
@@ -42,9 +39,7 @@ class UserRead(BaseModel):
     email: EmailStr
     is_admin: bool
     created_at: datetime
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Token ----------
@@ -52,43 +47,23 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class TokenData(BaseModel):
     sub: Optional[str] = None
 
 
-
 # ---------- Projects ----------
 class ProjectBase(BaseModel):
-    company_id: Optional[int] = Field(None, description="ID компании, которой принадлежит проект", example=1)
-    name: Optional[str] = Field(None, description="Название проекта", example="Smart City B")
-    type: Optional[str] = Field(None, description="Тип проекта", example="Infrastructure")
-    location: Optional[str] = Field(None, description="Местоположение проекта", example="Ashgabat, Turkmenistan")
-    opened_date: date = Field(default_factory=date.today)
-    status: Optional[ProjectStatus] = Field(ProjectStatus.Pending, description="Статус проекта", example=ProjectStatus.Active)
-    short_description: Optional[str] = Field(None, description="Краткое описание проекта", example="Urban infrastructure upgrade")
-    full_description: Optional[str] = Field(None, description="Полное описание проекта", example="Comprehensive urban development project...")
-    gallery: List[str] = Field(default_factory=list, description="Ссылки на изображения проекта", example=["/img/project1.jpg", "/img/project2.jpg"])
+    name: Optional[str] = None
+    type: Optional[str] = None
+    location: Optional[str] = None
+    status: Optional[str] = None
+    short_description: Optional[str] = None
+    full_description: Optional[str] = None
 
 
-class ProjectCreate(BaseModel):
+class ProjectCreate(ProjectBase):
     company_id: int
-    name: str
-    type: str
-    location: str
-    opened_date: Optional[datetime] = None
-    status: ProjectStatus = ProjectStatus.Pending
-    short_description: str
-    full_description: str
-    gallery: Optional[List[str]] = []
-
-    @validator("opened_date", pre=True, always=True)
-    def parse_opened_date(cls, v):
-        # Если ничего не передано, ставим UTC naive now
-        if v is None or v == "":
-            return datetime.utcnow()
-        if isinstance(v, str):
-            return datetime.fromisoformat(v)
-        return v
 
 
 class ProjectUpdate(ProjectBase):
@@ -96,36 +71,33 @@ class ProjectUpdate(ProjectBase):
 
 
 class ProjectRead(ProjectBase):
-    id: int = Field(..., description="ID проекта", example=1)
-    name: str = Field(..., description="Название проекта", example="Smart City B")
-    opened_date: Optional[datetime] = None
-    short_description: str = Field(..., description="Краткое описание проекта", example="Urban infrastructure upgrade")
-    gallery: List[str] = Field(default_factory=list, description="Ссылки на изображения проекта", example=["/img/project1.jpg", "/img/project2.jpg"])
-    company: Optional[CompanyReadMin] = Field(None, description="Информация о компании")
-
+    id: int
+    company_id: int
+    opened_date: date
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    gallery: List[str] = []
     model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- News ----------
 class NewsRecommendationRead(BaseModel):
-    id: int = Field(..., description="ID рекомендованной новости", example=2)
-    title: str = Field(..., description="Заголовок рекомендованной новости", example="Related News Title")
-
+    id: int
+    title: str
     model_config = ConfigDict(from_attributes=True)
 
 
 class NewsBase(BaseModel):
-    title: Optional[str] = Field(None, description="Заголовок новости", example="Новости Oguzabat: Запуск нового проекта")
-    short_description: Optional[str] = Field(None, description="Краткое описание новости", example="Компания Oguzabat объявила о запуске нового инфраструктурного проекта...")
-    full_text: Optional[str] = Field(None, description="Полный текст новости", example="Подробности о новом проекте...")
-    image_path: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
-    date: Optional[datetime] = Field(None, description="Дата публикации новости", example="2025-01-10T12       :00:00")
+    title: Optional[str] = None
+    short_description: Optional[str] = None
+    full_text: Optional[str] = None
+    image_path: Optional[str] = None
 
 
 class NewsCreate(NewsBase):
-    title: str = Field(..., description="Заголовок новости", example="Новости Oguzabat: Запуск нового проекта")
-    short_description: str = Field(..., description="Краткое описание новости", example="Компания Oguzabat объявила о запуске нового инфраструктурного проекта...")
-    date: datetime = Field(..., description="Дата публикации новости", example="2025-01-10T12:00:00")
+    title: str
+    short_description: str
+    full_text: str
 
 
 class NewsUpdate(NewsBase):
@@ -133,31 +105,30 @@ class NewsUpdate(NewsBase):
 
 
 class NewsRead(NewsBase):
-    id: int = Field(..., description="ID новости", example=1)
-    date: datetime = Field(..., description="Дата публикации новости", example="2025-01-10T12:00:00")
-    recommendations: List[NewsRecommendationRead] = Field(default_factory=list, description="Рекомендованные новости")
-    image_path: Optional[str] = Field(None, description="URL изображения новости", example="/img/news_image.jpg")
-
+    id: int
+    date: datetime  # автоматически из БД
+    recommendations: List[NewsRecommendationRead] = []
+    image_path: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 
 # ---------- Company ----------
 class CompanyBase(BaseModel):
-    name: Optional[str] = Field(None, description="Название компании", example="Oguzabat Tech")
-    description: Optional[str] = Field(None, description="Описание компании", example="Leading tech company in Central Asia")
-    logo_path: Optional[str] = Field(None, description="URL логотипа компании", example="/img/oguzabat_tech.png")
-    website: Optional[str] = Field(None, description="Сайт компании", example="https://oguzabat.com")
-    categories: List[str] = Field(default_factory=list, description="Категории компании", example=["IT", "Engineering"])
-    created_at: Optional[datetime] = Field(None, description="Дата создания записи о компании", example="2025-01-01T00:00:00")
-    updated_at: Optional[datetime] = Field(None, description="Дата последнего обновления записи", example="2025-01-05T10:00:00")
+    name: Optional[str] = None
+    email: Optional[str] = None
+    description: Optional[str] = None
+    logo_path: Optional[str] = None
+    website: Optional[str] = None
+    categories: List[str] = []
 
 
 class CompanyCreate(CompanyBase):
-    name: str = Field(..., description="Название компании", example="Oguzabat Tech")
-    description: str = Field(..., description="Описание компании", example="Leading tech company in Central Asia")
-    logo_path: str = Field(..., description="URL логотипа компании", example="/img/oguzabat_tech.png")
-    website: str = Field(..., description="Сайт компании", example="https://oguzabat.com")
-    categories: List[str] = Field(default_factory=list, description="Категории компании", example=["IT", "Engineering"])
+    name: str
+    description: str
+    logo_path: str
+    website: str
+    email: str
+    categories: List[str] = []
 
 
 class CompanyUpdate(CompanyBase):
@@ -165,33 +136,30 @@ class CompanyUpdate(CompanyBase):
 
 
 class CompanyRead(CompanyBase):
-    id: int = Field(..., description="ID компании", example=1)
-
-
+    id: int
+    logo_path: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    vacancies: List[VacancyRead] = []
     model_config = ConfigDict(from_attributes=True)
-
-class Message(BaseModel):
-    success: bool = Field(..., description="Флаг успешного выполнения операции", example=True)
-    message: str = Field(..., description="Сообщение о результате", example="Company deleted successfully")
 
 
 # ---------- Partner ----------
 class PartnerBase(BaseModel):
-    name: Optional[str] = Field(None, description="Название партнера", example="Partner A")
-    slogan: Optional[str] = Field(None, description="Слоган партнера", example="Building Together")
-    logo_path: Optional[str] = Field(None, description="URL логотипа партнера", example="/img/partner_a.png")
-    short_description: Optional[str] = Field(None, description="Краткое описание партнера", example="Leading construction partner")
-    tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
-    email: Optional[str] = Field(None, description="Email партнера", example="contact@partnera.com")
+    name: Optional[str] = None
+    slogan: Optional[str] = None
+    logo_path: Optional[str] = None
+    short_description: Optional[str] = None
+    tags: List[str] = []
+    email: Optional[str] = None
 
 
 class PartnerCreate(PartnerBase):
-    name: str = Field(..., description="Название партнера", example="Partner A")
-    slogan: str = Field(..., description="Слоган партнера", example="Building Together")
-    logo_path: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
-    short_description: str = Field(..., description="Краткое описание партнера", example="Leading construction partner")
-    tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
-    email: str = Field(..., description="Email партнера", example="contact@partnera.com")
+    name: str
+    slogan: str
+    logo_path: str
+    short_description: str
+    email: str
 
 
 class PartnerUpdate(PartnerBase):
@@ -199,176 +167,150 @@ class PartnerUpdate(PartnerBase):
 
 
 class PartnerRead(PartnerBase):
-    id: int = Field(..., description="ID партнера", example=1)
-    name: str = Field(..., description="Название партнера", example="Partner A")
-    slogan: str = Field(..., description="Слоган партнера", example="Building Together")
-    logo_path: str = Field(..., description="URL логотипа партнера", example="/img/partner_a.png")
-    short_description: str = Field(..., description="Краткое описание партнера", example="Leading construction partner")
-    tags: List[str] = Field(default_factory=list, description="Теги партнера", example=["construction", "infrastructure"])
-    email: str = Field(..., description="Email партнера", example="contact@partnera.com")
-
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------------- Vacancy ----------------
+# ---------- Vacancy ----------
 class VacancyBase(BaseModel):
-    """
-    Базовая схема вакансии. Содержит основные поля, которые наследуются в Create/Update/Read схемах.
-    """
-    title: Optional[str] = Field(
-        None, description="Название вакансии", example="Senior Python Developer"
-    )
-    description: Optional[str] = Field(
-        None, description="Описание вакансии", example="Looking for experienced Python developers..."
-    )
-    location: Optional[str] = Field(
-        None, description="Местоположение", example="Ashgabat, Turkmenistan"
-    )
-    employment_type: Optional[EmploymentType] = Field(
-        EmploymentType.Contract, description="Тип занятости", example=EmploymentType.Full_time
-    )
+    title: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
+    logo_path: Optional[str] = None
+    employment_type: Optional[EmploymentType] = EmploymentType.Contract
+
 
 
 class VacancyCreate(VacancyBase):
-    """
-    Схема для создания вакансии. Поля title и description обязательны.
-    """
-    title: str = Field(..., description="Название вакансии", example="Senior Python Developer")
-    description: str = Field(..., description="Описание вакансии", example="Looking for experienced Python developers...")
+    title: str
+    description: str
 
 
 class VacancyUpdate(VacancyBase):
-    """
-    Схема для обновления вакансии. Все поля опциональные.
-    """
     pass
 
 
 class VacancyRead(VacancyBase):
-    """
-    Схема для чтения вакансии. Добавляем id и список откликов (applications).
-    """
-    id: int = Field(..., description="ID вакансии", example=1)
-    applications: List["ApplicationRead"] = Field(default_factory=list, description="Список откликов на вакансию")
-
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    applications: List["ApplicationRead"] = []
+    company: Optional[CompanyRead] = None
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------------- ApplicationFile ----------------
+# ---------- ApplicationFile ----------
 class ApplicationFileRead(BaseModel):
-    """
-    Схема для чтения файла отклика.
-    """
-    id: int = Field(..., description="ID файла приложения", example=1)
-    file_url: str = Field(..., description="URL файла", example="uploads/portfolio/1234abcd.pdf")
-    created_at: datetime = Field(..., description="Дата загрузки файла", example="2025-10-02T12:30:00")
-
+    id: int
+    file_url: str
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------------- Application ----------------
+# ---------- Application ----------
 class ApplicationBase(BaseModel):
-    """
-    Базовая схема отклика. Все поля опциональные, наследуются для Create/Update/Read схем.
-    """
-    vacancy_id: Optional[int] = Field(None, description="ID вакансии, на которую подаётся отклик", example=1)
-    name: Optional[str] = Field(None, description="Имя соискателя", example="Иван")
-    surname: Optional[str] = Field(None, description="Фамилия соискателя", example="Иванов")
-    email: Optional[str] = Field(None, description="Email соискателя", example="ivan@example.com")
-    phone_number: Optional[str] = Field(None, description="Номер телефона соискателя", example="+99312345678")
-    message: Optional[str] = Field(None, description="Сообщение от соискателя", example="Я очень хочу работать у вас...")
-    created_at: Optional[datetime] = Field(None, description="Дата подачи отклика", example="2025-01-10T14:30:00")
+    vacancy_id: Optional[int] = None
+    name: Optional[str] = None
+    surname: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    message: Optional[str] = None
 
 
 class ApplicationCreate(ApplicationBase):
-    """
-    Схема для создания отклика. Основные поля обязательны.
-    """
-    vacancy_id: int = Field(..., description="ID вакансии, на которую подаётся отклик", example=1)
-    name: str = Field(..., description="Имя соискателя", example="Иван")
-    surname: str = Field(..., description="Фамилия соискателя", example="Иванов")
-    email: str = Field(..., description="Email соискателя", example="ivan@example.com")
-    phone_number: str = Field(..., description="Номер телефона соискателя", example="+99312345678")
+    vacancy_id: int
+    name: str
+    surname: str
+    email: str
+    phone_number: str
+
 
 class ApplicationUpdate(ApplicationBase):
-    """
-    Схема для обновления отклика. Все поля опциональные.
-    """
     pass
 
 
 class ApplicationRead(BaseModel):
-    id: int = Field(..., description="ID отклика")
-    vacancy: Optional[VacancyReadMinimal] = Field(None, description="Вакансия")
-    files: List[ApplicationFileRead] = Field(default_factory=list, description="Файлы отклика")
-    name: str = Field(..., description="Имя")
-    surname: str = Field(..., description="Фамилия")
-    email: str = Field(..., description="Email")
-    phone_number: str = Field(..., description="Телефон")
-    message: Optional[str] = Field(None, description="Сообщение")
-    created_at: datetime = Field(..., description="Дата создания")
-
+    id: int
+    vacancy: Optional[VacancyReadMinimal] = None
+    files: List[ApplicationFileRead] = []
+    name: str
+    surname: str
+    email: str
+    phone_number: str
+    message: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
-
 
 
 # ---------- ContactForm ----------
 class ContactFormBase(BaseModel):
-    first_name: Optional[str] = Field(None, description="Имя отправителя", example="Иван")
-    last_name: Optional[str] = Field(None, description="Фамилия отправителя", example="Иванов")
-    email: Optional[str] = Field(None, description="Email отправителя", example="ivan@example.com")
-    phone_number: Optional[str] = Field(None, description="Номер телефона отправителя", example="+99312345678")
-    company_name: Optional[str] = Field(None, description="Название компании отправителя", example="ООО Рога и Копыта")
-    message: Optional[str] = Field(None, description="Сообщение", example="Здравствуйте, мы хотим сотрудничать...")
-    map_code: Optional[str] = Field(None, description="HTML-код для отображения карты", example="<iframe src='https://www.google.com/maps/embed?...'></iframe>")
-    created_at: Optional[datetime] = Field(None, description="Дата отправки формы", example="2025-01-10T15:00:00")
-
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+    company_name: Optional[str] = None
+    message: Optional[str] = None
+    map_code: Optional[str] = None
 
 class ContactFormCreate(ContactFormBase):
-    first_name: str = Field(..., description="Имя отправителя", example="Иван")
-    last_name: str = Field(..., description="Фамилия отправителя", example="Иванов")
-    email: str = Field(..., description="Email отправителя", example="ivan@example.com")
-    phone_number: str = Field(..., description="Номер телефона отправителя", example="+99312345678")
-    company_name: str = Field(..., description="Название компании отправителя", example="ООО Рога и Копыта")
-    message: str = Field(..., description="Сообщение", example="Здравствуйте, мы хотим сотрудничать...")
-
+    first_name: str
+    last_name: str
+    email: str
+    phone_number: str
+    company_name: str
+    message: str
 
 class ContactFormUpdate(ContactFormBase):
-    pass 
-
+    pass
 
 class ContactFormRead(ContactFormBase):
-    id: int = Field(..., description="ID записи формы", example=1)
-    first_name: str = Field(..., description="Имя отправителя", example="Иван")
-    last_name: str = Field(..., description="Фамилия отправителя", example="Иванов")
-    email: str = Field(..., description="Email отправителя", example="ivan@example.com")
-    phone_number: str = Field(..., description="Номер телефона отправителя", example="+99312345678")
-    company_name: str = Field(..., description="Название компании отправителя", example="ООО Рога и Копыта")
-    message: str = Field(..., description="Сообщение", example="Здравствуйте, мы хотим сотрудничать...")
-    map_code: Optional[str] = Field(None, description="HTML-код для отображения карты", example="<iframe src='https://www.google.com/maps/embed?...'></iframe>")
-    created_at: datetime = Field(..., description="Дата отправки формы", example="2025-01-10T15:00:00")
+    id: int
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-
 
 
 # ---------- AboutGallery ----------
-class AboutGalleryBase(BaseModel):
-    image_url: Optional[str] = Field(None, description="Ссылка на изображение галереи", example="image1.jpg")
-    order: Optional[int] = Field(None, description="Сортировка")
+class AboutUsImageBase(BaseModel):
+    image_path: str
 
 
-class AboutGalleryCreate(AboutGalleryBase):
-    image_url: str = Field(...,description="Ссылка на изображение галереи", example="image1.jpg")   
-    order: int = Field(..., description="Сортировка")
-
-class AboutGalleryUpdate(AboutGalleryBase):
+class AboutUsImageCreate(AboutUsImageBase):
     pass
 
-class AboutGalleryRead(AboutGalleryBase):
-    id: int = Field(..., description="ID изображения в галерее", example=1)
-    image_url: str = Field(...,description="Ссылка на изображение галереи")
-    order: int = Field(..., description="Сортировка")
+
+class AboutUsImageRead(AboutUsImageBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class AboutUsGalleryBase(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AboutUsGalleryCreate(AboutUsGalleryBase):
+    images: Optional[List[AboutUsImageCreate]] = []
+
+
+class AboutUsGalleryUpdate(AboutUsGalleryBase):
+    images: Optional[List[AboutUsImageCreate]] = []
+
+
+class AboutUsGalleryRead(AboutUsGalleryBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    images: List[AboutUsImageRead] = []
 
     model_config = ConfigDict(from_attributes=True)
 
+
+CompanyRead.update_forward_refs()
+VacancyRead.update_forward_refs()

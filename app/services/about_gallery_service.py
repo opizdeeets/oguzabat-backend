@@ -1,108 +1,130 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import delete
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy import select
+from fastapi import UploadFile, HTTPException, status
 from typing import List, Optional
-from fastapi import UploadFile
 
-from app.models.models import AboutGallery
-from app.schemas.schemas import AboutGalleryCreate, AboutGalleryUpdate
-from app.core.uploads import save_uploaded_file, delete_uploaded_file, replace_uploaded_file
+from sqlalchemy.orm import selectinload
 
-# ---------------- CREATE ----------------
-async def create_image(
+from app.models.models import AboutUsGallery, AboutUsImage
+from app.schemas.schemas import AboutUsGalleryRead
+from app.core.uploads import save_uploaded_file, delete_uploaded_file, save_uploaded_files
+
+GALLERY_SUBDIR = "about_us_gallery"
+MAX_IMAGE_SIZE_MB = 7
+
+# ---------------- CRUD ----------------
+async def get_aboutusgallery(db: AsyncSession) -> AboutUsGallery:
+    """
+    Возвращает единственную запись галереи с вложенными изображениями.
+    """
+    result = await db.execute(select(AboutUsGallery).options(selectinload(AboutUsGallery.images)))
+    gallery = result.scalars().first()
+    if not gallery:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="AboutUsGallery not found"
+        )
+    # Загрузка изображений
+    await db.refresh(gallery)
+    return gallery
+
+
+async def create_aboutusgallery_images(
     db: AsyncSession,
-    about_gallery_in: AboutGalleryCreate,
-    file: Optional[UploadFile] = None
-) -> AboutGallery:
-    try:
-        file_path = await save_uploaded_file(file, sub_dir="about_gallery") if file else None
-        db_obj = AboutGallery(**about_gallery_in.dict())
-        if file_path:
-            db_obj.image_path = file_path
+    files: List[UploadFile]
+) -> List[AboutUsImage]:
+    """
+    Загружает несколько изображений и привязывает их к единственной записи галереи.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
 
-        db.add(db_obj)
+    gallery = await get_aboutusgallery(db)
+
+    saved_images = []
+    for file in files:
+        path = await save_uploaded_file(file, GALLERY_SUBDIR, max_mb=MAX_IMAGE_SIZE_MB)
+        image = AboutUsImage(
+            gallery_id=gallery.id,
+            image_path=path
+        )
+        db.add(image)
+        saved_images.append(image)
+
+    try:
         await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        for img in saved_images:
+            await db.refresh(img)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {e}"
+        )
 
-    except IntegrityError:
-        await db.rollback()
-        raise
-    except SQLAlchemyError:
-        await db.rollback()
-        raise
-
-
-# ---------------- READ ONE ----------------
-async def get_image(db: AsyncSession, about_gallery_id: int) -> Optional[AboutGallery]:
-    try:
-        result = await db.execute(select(AboutGallery).where(AboutGallery.id == about_gallery_id))
-        return result.scalars().first()
-    except SQLAlchemyError:
-        raise
+    return saved_images
 
 
-# ---------------- READ ALL ----------------
-async def get_images(db: AsyncSession, sort: str = "order_asc") -> List[AboutGallery]:
-    try:
-        stmt = select(AboutGallery)
-        stmt = stmt.order_by(AboutGallery.order.desc() if sort == "order_desc" else AboutGallery.order.asc())
-        result = await db.execute(stmt)
-        return result.scalars().all()
-    except SQLAlchemyError:
-        raise
-
-
-# ---------------- UPDATE ----------------
-async def update_image(
+async def update_about_us_gallery(
     db: AsyncSession,
-    about_gallery_id: int,
-    about_gallery_in: AboutGalleryUpdate,
-    new_file: Optional[UploadFile] = None
-) -> Optional[AboutGallery]:
+    gallery_id: int,
+    update_data: dict,
+    files: Optional[List[UploadFile]] = None
+) -> AboutUsGallery:
+    # 1️⃣ Получаем галерею
+    result = await db.execute(select(AboutUsGallery).filter(AboutUsGallery.id == gallery_id))
+    gallery = result.scalars().first()
+    if not gallery:
+        raise HTTPException(status_code=404, detail=f"Gallery with id={gallery_id} not found")
+
+    # 2️⃣ Обновляем поля сущности
+    for key, value in update_data.items():
+        setattr(gallery, key, value)
+
+    # 3️⃣ Обрабатываем загруженные изображения
+    if files:
+        try:
+            saved_paths = await save_uploaded_files(files, GALLERY_SUBDIR, max_mb=7)
+            for path in saved_paths:
+                new_image = AboutUsImage(image_path=path, gallery_id=gallery.id)
+                db.add(new_image)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"File upload error: {e}")
+
+    # 4️⃣ Коммит изменений
     try:
-        result = await db.execute(select(AboutGallery).where(AboutGallery.id == about_gallery_id))
-        db_obj = result.scalars().first()
-        if not db_obj:
-            return None
-
-        update_data = about_gallery_in.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(db_obj, field, value)
-
-        # Если передан новый файл, заменяем старый
-        if new_file:
-            db_obj.image_path = await replace_uploaded_file(db_obj.image_path, new_file, sub_dir="about_gallery")
-
         await db.commit()
-        await db.refresh(db_obj)
-        return db_obj
+        await db.refresh(gallery)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-    except IntegrityError:
-        await db.rollback()
-        raise
-    except SQLAlchemyError:
-        await db.rollback()
-        raise
+    return gallery
 
 
-# ---------------- DELETE ----------------
-async def delete_image(db: AsyncSession, about_gallery_id: int) -> bool:
+async def delete_aboutusgallery_image(
+    db: AsyncSession,
+    image_id: int
+) -> bool:
+    """
+    Удаляет изображение из галереи и файл с диска.
+    """
+    result = await db.execute(select(AboutUsImage).filter(AboutUsImage.id == image_id))
+    image = result.scalars().first()
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image with id={image_id} not found"
+        )
+
     try:
-        result = await db.execute(select(AboutGallery).where(AboutGallery.id == about_gallery_id))
-        db_obj = result.scalars().first()
-        if not db_obj:
-            return False
-
-        # Удаляем файл с диска
-        if db_obj.image_path:
-            await delete_uploaded_file(db_obj.image_path)
-
-        await db.delete(db_obj)
+        await delete_uploaded_file(image.image_path)
+        await db.delete(image)
         await db.commit()
-        return True
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting image: {e}"
+        )
 
-    except SQLAlchemyError:
-        await db.rollback()
-        raise
+    return True

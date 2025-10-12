@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, UploadFile, Form, Path, status, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, Form, Path, status, HTTPException, File
+from pyasn1.type.univ import Boolean
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 
 from app.core.db import get_db
 from app.core.deps import get_current_user  # JWT авторизация
-from app.schemas.schemas import PartnerCreate, PartnerUpdate, PartnerRead, Message
+from app.models.models import Partner
+from app.schemas.schemas import PartnerCreate, PartnerUpdate, PartnerRead
 from app.services import partner_service as partner_crud
 from app.core.uploads import save_uploaded_file, update_entity  # универсальный аплоудер
 
@@ -13,25 +15,23 @@ router = APIRouter(prefix="/partners", tags=["partners"])
 # ---------------- CREATE ----------------
 @router.post("/", response_model=PartnerRead, status_code=status.HTTP_201_CREATED)
 async def create_partner(
-    name: str = Form(..., description="Название партнёра"),
-    description: str = Form(..., description="Описание партнёра"),
-    website: str = Form(..., description="Сайт партнёра"),
-    logo: Optional[UploadFile] = None,
-    db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
+    name: str = Form(...),
+    slogan: str = Form(...),
+    short_description: str = Form(...),
+    email: str = Form(...),
+    logo: UploadFile | None = File(None),
+    db: AsyncSession = Depends(get_db)
 ):
-    logo_path = None
-    if logo:
-        logo_path = await save_uploaded_file(logo, sub_dir="partners")
-
     partner_in = PartnerCreate(
         name=name,
-        description=description,
-        website=website,
-        logo_path=logo_path or "",
+        slogan=slogan,
+        short_description=short_description,
+        email=email,
+        logo_path=""  # пока пусто, логотип обрабатываем в сервисе
     )
+
     try:
-        return await partner_crud.create_partner(db, partner_in)
+        return await partner_crud.create_partner(db, partner_in, logo_file=logo)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка создания партнёра: {e}")
 
@@ -40,20 +40,43 @@ async def create_partner(
 @router.put("/{partner_id}", response_model=PartnerRead)
 async def update_partner(
     partner_id: int = Path(..., gt=0),
-    partner_in: PartnerUpdate = Form(...),
-    logo: Optional[UploadFile] = None,
+    name: Optional[str] = Form(None),
+    slogan: Optional[str] = Form(None),
+    short_description: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    logo: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
-    user: dict = Depends(get_current_user),  # JWT только здесь
 ):
+    """
+    Обновление партнёра с формами и возможностью загрузки нового логотипа.
+    """
+    # Формируем словарь для update_entity
+    update_data = {}
+    if name is not None:
+        update_data["name"] = name
+    if slogan is not None:
+        update_data["slogan"] = slogan
+    if short_description is not None:
+        update_data["short_description"] = short_description
+    if email is not None:
+        update_data["email"] = email
+
+    # Если нет данных и нет файла — ошибка
+    if not update_data and not logo:
+        raise HTTPException(
+            status_code=400, detail="Нет данных для обновления"
+        )
+
     return await update_entity(
         db=db,
         entity_id=partner_id,
-        entity_in=partner_in,
+        entity_in=update_data,
         crud_update_func=partner_crud.update_partner,
         file=logo,
-        file_sub_dir="partners",
+        sub_dir="partners",
+        model_class=Partner,
+        file_field="logo_path",  # явно указываем поле для файла
     )
-
 
 # ---------------- GET LIST ----------------
 @router.get("/", response_model=List[PartnerRead])
@@ -74,7 +97,7 @@ async def get_partner(partner_id: int = Path(..., gt=0), db: AsyncSession = Depe
 
 
 # ---------------- DELETE ----------------
-@router.delete("/{partner_id}", response_model=Message)
+@router.delete("/{partner_id}", response_model=bool)
 async def delete_partner(
     partner_id: int = Path(..., gt=0),
     db: AsyncSession = Depends(get_db),
@@ -83,4 +106,4 @@ async def delete_partner(
     deleted = await partner_crud.delete_partner(db, partner_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Partner not found")
-    return {"success": True, "message": "Partner deleted successfully"}
+    return True

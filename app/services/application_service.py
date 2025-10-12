@@ -3,55 +3,97 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, UploadFile
 from typing import List, Optional
+from datetime import datetime
 
+from app.schemas.schemas import ApplicationCreate
 from app.models.models import Application, ApplicationFile
 from app.core.uploads import save_uploaded_file, delete_uploaded_file
+
 
 # ---------------- CREATE ----------------
 async def create_application(
     db: AsyncSession,
-    data: dict,
+    application_in: ApplicationCreate,
     files: Optional[List[UploadFile]] = None
 ) -> Application:
-    file_objs = []
-    if files:
-        if not isinstance(files, list):
-            files = [files]
-        for f in files:
-            url = await save_uploaded_file(f, sub_dir="applications")
-            file_objs.append(ApplicationFile(file_url=url))
+    """
+    Создаёт заявку (Application) с опциональными файлами.
+    Дата создания берётся автоматически, явно задаём UTC now.
+    """
+    try:
+        file_objs: List[ApplicationFile] = []
 
-    app_obj = Application(**data, files=file_objs)
-    db.add(app_obj)
-    await db.commit()
+        if files:
+            if not isinstance(files, list):
+                files = [files]
+            for file in files:
+                file_url = await save_uploaded_file(file, sub_dir="applications")
+                file_objs.append(ApplicationFile(file_url=file_url))
 
-    stmt = select(Application).where(Application.id == app_obj.id).options(
-        selectinload(Application.files),
-        selectinload(Application.vacancy)
-    )
-    result = await db.execute(stmt)
-    return result.scalars().first()
+        app_obj = Application(
+            **application_in.dict(),
+            files=file_objs,
+            created_at=datetime.utcnow()
+        )
+        db.add(app_obj)
+        await db.commit()
+
+        # Используем selectinload для связанных объектов
+        result = await db.execute(
+            select(Application)
+            .where(Application.id == app_obj.id)
+            .options(
+                selectinload(Application.files),
+                selectinload(Application.vacancy)
+            )
+        )
+        app_obj = result.scalars().first()
+        return app_obj
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
 
 # ---------------- READ ALL ----------------
-async def get_applications(db: AsyncSession, vacancy_id: Optional[int] = None) -> List[Application]:
-    stmt = select(Application).options(
-        selectinload(Application.files),
-        selectinload(Application.vacancy)
+async def get_applications(
+    db: AsyncSession,
+    vacancy_id: Optional[int] = None
+) -> List[Application]:
+    stmt = (
+        select(Application)
+        .options(
+            selectinload(Application.files),
+            selectinload(Application.vacancy)
+        )
+        .order_by(Application.created_at.desc())
     )
     if vacancy_id:
         stmt = stmt.where(Application.vacancy_id == vacancy_id)
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return result.scalars().unique().all()
+
 
 # ---------------- READ ONE ----------------
-async def get_application(db: AsyncSession, application_id: int) -> Optional[Application]:
-    stmt = select(Application).where(Application.id == application_id).options(
-        selectinload(Application.files),
-        selectinload(Application.vacancy)
+async def get_application(
+    db: AsyncSession,
+    application_id: int
+) -> Application:
+    stmt = (
+        select(Application)
+        .where(Application.id == application_id)
+        .options(
+            selectinload(Application.files),
+            selectinload(Application.vacancy)
+        )
     )
     result = await db.execute(stmt)
-    return result.scalars().first()
+    app_obj = result.scalars().first()
+    if not app_obj:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app_obj
+
 
 # ---------------- UPDATE ----------------
 async def update_application(
@@ -61,48 +103,67 @@ async def update_application(
     new_files: Optional[List[UploadFile]] = None
 ) -> Application:
     result = await db.execute(
-        select(Application).where(Application.id == application_id).options(
-            selectinload(Application.files)
-        )
+        select(Application)
+        .where(Application.id == application_id)
+        .options(selectinload(Application.files))
     )
     app_obj = result.scalars().first()
     if not app_obj:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    for k, v in update_data.items():
-        if v is not None:
-            setattr(app_obj, k, v)
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(app_obj, key, value)
 
     if new_files:
         if not isinstance(new_files, list):
             new_files = [new_files]
-        for f in new_files:
-            url = await save_uploaded_file(f, sub_dir="applications")
-            app_obj.files.append(ApplicationFile(file_url=url))
+        for file in new_files:
+            file_url = await save_uploaded_file(file, sub_dir="applications")
+            app_obj.files.append(ApplicationFile(file_url=file_url))
 
-    await db.commit()
+    try:
+        await db.commit()
+        # Заново загружаем связи
+        result = await db.execute(
+            select(Application)
+            .where(Application.id == application_id)
+            .options(
+                selectinload(Application.files),
+                selectinload(Application.vacancy)
+            )
+        )
+        app_obj = result.scalars().first()
+        return app_obj
 
-    stmt = select(Application).where(Application.id == app_obj.id).options(
-        selectinload(Application.files),
-        selectinload(Application.vacancy)
-    )
-    result = await db.execute(stmt)
-    return result.scalars().first()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Update failed: {e}")
+
 
 # ---------------- DELETE ----------------
-async def delete_application(db: AsyncSession, application_id: int) -> bool:
+async def delete_application(
+    db: AsyncSession,
+    application_id: int
+) -> bool:
     result = await db.execute(
-        select(Application).where(Application.id == application_id).options(
-            selectinload(Application.files)
-        )
+        select(Application)
+        .where(Application.id == application_id)
+        .options(selectinload(Application.files))
     )
     app_obj = result.scalars().first()
     if not app_obj:
-        return False
+        raise HTTPException(status_code=404, detail="Application not found")
 
-    for f in app_obj.files:
-        await delete_uploaded_file(f.file_url)
+    # Удаляем файлы физически
+    for file in app_obj.files:
+        await delete_uploaded_file(file.file_url)
 
-    await db.delete(app_obj)
-    await db.commit()
-    return True
+    try:
+        await db.delete(app_obj)
+        await db.commit()
+        return True
+
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {e}")

@@ -1,68 +1,103 @@
+# app/services/project_service.py
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
-from typing import List
-from datetime import datetime
-
+from sqlalchemy import select
 from app.models.models import Project
+from app.core.uploads import save_uploaded_file, delete_uploaded_file
 from app.schemas.schemas import ProjectCreate, ProjectUpdate
+from typing import List, Optional
 
 
-async def create_project(db: AsyncSession, project_in: ProjectCreate, gallery_files: List[str]) -> Project:
-    try:
-        # Если клиент не передал дату, ставим текущую UTC без tzinfo
-        opened_date = project_in.opened_date or datetime.utcnow()
-        if opened_date.tzinfo is not None:
-            opened_date = opened_date.replace(tzinfo=None)
-
-        db_project = Project(
-            company_id=project_in.company_id,
-            name=project_in.name,
-            type=project_in.type,
-            location=project_in.location,
-            opened_date=opened_date,
-            status=project_in.status,
-            short_description=project_in.short_description,
-            full_description=project_in.full_description,
-            gallery=gallery_files or []
-        )
-        db.add(db_project)
-        await db.commit()
-        await db.refresh(db_project)
-        return db_project
-    except SQLAlchemyError as e:
-        await db.rollback()
-        raise e
+# ---------- CREATE ----------
+async def create_project(
+    db: AsyncSession,
+    project_in: ProjectCreate,
+    gallery_files: Optional[List[str]] = None
+) -> Project:
+    """
+    Создаёт новый проект. Дата и время устанавливаются автоматически (server_default).
+    """
+    project = Project(
+        **project_in.dict(),
+        gallery=gallery_files or []  # предотвращает ошибку NoneType
+    )
+    db.add(project)
+    await db.commit()
+    await db.refresh(project)
+    return project
 
 
-async def update_project(db: AsyncSession, project: Project, project_in: ProjectUpdate, gallery_files: List[str] = None) -> Project:
-    try:
-        # Обновляем поля по мере необходимости
-        for field, value in project_in.dict(exclude_unset=True).items():
-            if field == "opened_date" and value:
-                if value.tzinfo is not None:
-                    value = value.replace(tzinfo=None)
-            setattr(project, field, value)
+# ---------- READ ----------
+async def get_projects(
+    db: AsyncSession,
+    company_id: Optional[int] = None
+) -> List[Project]:
+    """
+    Возвращает список всех проектов, опционально фильтруя по компании.
+    """
+    query = select(Project)
+    if company_id:
+        query = query.filter(Project.company_id == company_id)
 
-        if gallery_files is not None:
-            project.gallery = gallery_files
-
-        await db.commit()
-        await db.refresh(project)
-        return project
-    except SQLAlchemyError as e:
-        await db.rollback()
-        raise e
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
-async def get_project(db: AsyncSession, project_id: int) -> Project | None:
-    result = await db.get(Project, project_id)
-    return result
+async def get_project(
+    db: AsyncSession,
+    project_id: int
+) -> Optional[Project]:
+    """
+    Возвращает проект по ID.
+    """
+    result = await db.execute(select(Project).filter(Project.id == project_id))
+    return result.scalars().first()
 
 
-async def delete_project(db: AsyncSession, project: Project):
-    try:
-        await db.delete(project)
-        await db.commit()
-    except SQLAlchemyError as e:
-        await db.rollback()
-        raise e
+# ---------- UPDATE ----------
+async def update_project(
+    db: AsyncSession,
+    project_id: int,
+    project_in: ProjectUpdate,
+    new_gallery_files: Optional[List[str]] = None
+) -> Optional[Project]:
+    """
+    Обновляет данные проекта. Если переданы новые файлы — заменяет галерею.
+    """
+    project = await get_project(db, project_id)
+    if not project:
+        return None
+
+    update_data = project_in.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(project, key, value)
+
+    if new_gallery_files is not None:
+        # безопасное удаление старых файлов
+        for old_path in project.gallery or []:
+            await delete_uploaded_file(old_path)
+        project.gallery = new_gallery_files
+
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+# ---------- DELETE ----------
+async def delete_project(
+    db: AsyncSession,
+    project_id: int
+) -> bool:
+    """
+    Удаляет проект и связанные файлы галереи.
+    """
+    project = await get_project(db, project_id)
+    if not project:
+        return False
+
+    # удаляем все файлы галереи
+    for path in project.gallery or []:
+        await delete_uploaded_file(path)
+
+    await db.delete(project)
+    await db.commit()
+    return True

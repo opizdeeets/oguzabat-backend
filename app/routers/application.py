@@ -1,13 +1,17 @@
+# app/api/v1/application_router.py
+
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, Form, Path, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from app.schemas.schemas import ApplicationCreate, ApplicationUpdate, ApplicationRead, Message
+
+from app.schemas.schemas import ApplicationCreate, ApplicationUpdate, ApplicationRead
 from app.services import application_service as application_crud
 from app.core.db import get_db
 from app.core.deps import get_current_admin_user
 
-router = APIRouter(prefix="/applications", tags=["applications"])
+router = APIRouter(prefix="/applications", tags=["Applications"])
+
 
 # ---------------- CREATE ----------------
 @router.post("/", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
@@ -17,99 +21,109 @@ async def create_application(
     surname: str = Form(...),
     email: str = Form(...),
     phone_number: str = Form(...),
-    portfolio_file: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    message: Optional[str] = Form(None),
+    portfolio_files: Optional[List[UploadFile]] = File(None),
+    db: AsyncSession = Depends(get_db),
 ):
+    """
+    Создать отклик на вакансию. Дата создаётся автоматически в БД.
+    """
     application_in = ApplicationCreate(
         vacancy_id=vacancy_id,
         name=name,
         surname=surname,
         email=email,
-        phone_number=phone_number
+        phone_number=phone_number,
+        message=message,
     )
     try:
-        created = await application_crud.create_application(db, application_in.dict(), [portfolio_file] if portfolio_file else None)
+        created = await application_crud.create_application(
+            db=db,
+            application_in=application_in,
+            files=portfolio_files,
+        )
         return created
     except IntegrityError:
-        raise HTTPException(status_code=400, detail="Could not create application. Possibly duplicate or invalid fields.")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=400, detail="Invalid or duplicate application data.")
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
 
 # ---------------- READ ALL ----------------
 @router.get("/", response_model=List[ApplicationRead])
 async def list_applications(
     vacancy_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    admin_user: dict = Depends(get_current_admin_user),
 ):
-    try:
-        items = await application_crud.get_applications(db, vacancy_id)
-        return items
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    """
+    Получить список откликов (опционально отфильтрованных по вакансии).
+    """
+    return await application_crud.get_applications(db, vacancy_id)
+
 
 # ---------------- READ ONE ----------------
 @router.get("/{application_id}", response_model=ApplicationRead)
 async def get_application(
-    application_id: int = Path(..., gt=0, description="Application ID"),
+    application_id: int = Path(..., gt=0, description="ID отклика"),
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    admin_user: dict = Depends(get_current_admin_user),
 ):
-    try:
-        app_obj = await application_crud.get_application(db, application_id)
-        if not app_obj:
-            raise HTTPException(status_code=404, detail="Application not found")
-        return app_obj
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    """
+    Получить отклик по ID.
+    """
+    app_obj = await application_crud.get_application(db, application_id)
+    if not app_obj:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return app_obj
+
 
 # ---------------- UPDATE ----------------
 @router.put("/{application_id}", response_model=ApplicationRead)
 async def update_application(
-    application_id: int = Path(..., gt=0, description="Application ID"),
+    application_id: int = Path(..., gt=0, description="ID отклика"),
     name: Optional[str] = Form(None),
+    surname: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     phone_number: Optional[str] = Form(None),
-    portfolio_file: Optional[UploadFile] = File(None),
+    message: Optional[str] = Form(None),
+    portfolio_files: Optional[List[UploadFile]] = File(None),
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    admin_user: dict = Depends(get_current_admin_user),
 ):
-    application_in = ApplicationUpdate(
-        name=name,
-        email=email,
-        phone_number=phone_number
+    """
+    Обновить отклик и, при необходимости, добавить новые файлы.
+    """
+    update_data = {
+        "name": name,
+        "surname": surname,
+        "email": email,
+        "phone_number": phone_number,
+        "message": message,
+    }
+
+    updated = await application_crud.update_application(
+        db=db,
+        application_id=application_id,
+        update_data=update_data,
+        new_files=portfolio_files,
     )
-    try:
-        updated = await application_crud.update_application(db, application_id, application_in.dict(exclude_unset=True), [portfolio_file] if portfolio_file else None)
-        if not updated:
-            raise HTTPException(status_code=404, detail="Application not found")
-        return updated
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Could not update application. Possibly duplicate or invalid fields.")
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return updated
+
 
 # ---------------- DELETE ----------------
-@router.delete("/{application_id}", response_model=Message)
+@router.delete("/{application_id}", response_model=bool)
 async def delete_application(
-    application_id: int = Path(..., gt=0, description="Application ID"),
+    application_id: int = Path(..., gt=0, description="ID отклика"),
     db: AsyncSession = Depends(get_db),
-    admin_user: dict = Depends(get_current_admin_user)
+    admin_user: dict = Depends(get_current_admin_user),
 ):
-    try:
-        deleted = await application_crud.delete_application(db, application_id)
-        if not deleted:
-            raise HTTPException(status_code=404, detail="Application not found")
-        return {"success": True, "message": "Application deleted successfully"}
-    except SQLAlchemyError:
-        raise HTTPException(status_code=500, detail="Database error")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Internal server error")
+    """
+    Удалить отклик и связанные файлы.
+    """
+    deleted = await application_crud.delete_application(db, application_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return True
