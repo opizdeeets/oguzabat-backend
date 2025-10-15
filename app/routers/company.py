@@ -34,7 +34,7 @@ async def create_company(
 
     logo_path = None
     if logo:
-        logo_path = await save_uploaded_file(logo, sub_dir="logos")
+        logo_path = await save_uploaded_file(logo, sub_dir="company_logos")
 
     company_in = CompanyCreate(
         name=name,
@@ -55,20 +55,29 @@ async def create_company(
 @router.put("/{company_id}", response_model=CompanyRead)
 async def update_company(
     company_id: int = Path(..., gt=0),
-    name: Optional[str] = Form(None),
-    description: Optional[str] = Form(None),
-    website: Optional[str] = Form(None),
+    name: Optional[str] = Form(None, description="Название компании"),
+    description: Optional[str] = Form(None, description="Описание компании"),
+    email: Optional[str] = Form(None, description="Email компании"),
+    website: Optional[str] = Form(None, description="Сайт компании"),
+    categories: Optional[str] = Form("", description="Категории через запятую"),
     logo: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
     user: dict = Depends(get_current_user),
 ):
     """
     Обновляет данные компании. Если передан новый логотип — заменяет старый файл.
+    Все поля аналогичны create.
     """
+    categories_list = None
+    if categories is not None:
+        categories_list = [c.strip() for c in categories.split(",") if c.strip()]
+
     company_in = CompanyUpdate(
         name=name,
         description=description,
         website=website,
+        email=email,
+        categories=categories_list,
     )
 
     return await update_entity(
@@ -81,6 +90,7 @@ async def update_company(
         sub_dir="company_logos",
         file_field="logo_path"
     )
+
 
 
 # ---------------- READ LIST ----------------

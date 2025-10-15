@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import List, Optional
 from datetime import datetime, date
@@ -137,12 +138,19 @@ class CompanyUpdate(CompanyBase):
 
 class CompanyRead(CompanyBase):
     id: int
+    name: str
+    description: Optional[str] = None
     logo_path: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    vacancies: List[VacancyRead] = []
-    model_config = ConfigDict(from_attributes=True)
+    vacancies: List[VacancyRead] = []  # <- здесь вакансия с простой ссылкой на компанию
+    projects: Optional[List] = []
 
+class CompanyReadSimple(BaseModel):
+    id: int
+    name: str
+    logo_path: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
 
 # ---------- Partner ----------
 class PartnerBase(BaseModel):
@@ -194,10 +202,24 @@ class VacancyUpdate(VacancyBase):
 
 class VacancyRead(VacancyBase):
     id: int
+    title: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    employment_type: Optional[str] = None
+    logo_path: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    applications: List["ApplicationRead"] = []
-    company: Optional[CompanyRead] = None
+    company: CompanyReadSimple
+
+class VacancyReadSimple(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    employment_type: Optional[str] = None
+    logo_path: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -312,5 +334,5 @@ class AboutUsGalleryRead(AboutUsGalleryBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-CompanyRead.update_forward_refs()
-VacancyRead.update_forward_refs()
+CompanyRead.model_rebuild()
+VacancyRead.model_rebuild()

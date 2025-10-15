@@ -1,7 +1,9 @@
+# app/services/vacancy_service.py
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, UploadFile
 from typing import Optional, List
 
@@ -14,13 +16,13 @@ from app.core.uploads import save_uploaded_file, delete_uploaded_file
 async def create_vacancy(
     db: AsyncSession,
     vacancy_in: VacancyCreate,
-    company_id: int,  # добавляем связь
+    company_id: int,
     logo: Optional[UploadFile] = None,
     max_mb: int = 2
 ) -> Vacancy:
     try:
         vacancy_data = vacancy_in.model_dump()
-        vacancy_data["company_id"] = company_id  # связываем с компанией
+        vacancy_data["company_id"] = company_id
 
         if logo:
             logo_path = await save_uploaded_file(logo, sub_dir="logos", max_mb=max_mb)
@@ -48,11 +50,10 @@ async def get_vacancy(db: AsyncSession, vacancy_id: int) -> Optional[Vacancy]:
     try:
         result = await db.execute(
             select(Vacancy)
-            .where(Vacancy.id == vacancy_id)
             .options(selectinload(Vacancy.company))  # подгружаем компанию
+            .where(Vacancy.id == vacancy_id)
         )
-        vacancy = result.scalars().first()
-        return vacancy
+        return result.scalars().first()
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=f"Ошибка при получении вакансии: {e}")
 
@@ -75,10 +76,12 @@ async def update_vacancy(
     vacancy_in: VacancyUpdate,
     logo: Optional[UploadFile] = None,
     max_mb: int = 2,
-    company_id: Optional[int] = None  # можно менять компанию при обновлении
+    company_id: Optional[int] = None
 ) -> Optional[Vacancy]:
     try:
-        result = await db.execute(select(Vacancy).where(Vacancy.id == vacancy_id))
+        result = await db.execute(
+            select(Vacancy).options(selectinload(Vacancy.company)).where(Vacancy.id == vacancy_id)
+        )
         db_vacancy = result.scalars().first()
 
         if not db_vacancy:
@@ -86,7 +89,7 @@ async def update_vacancy(
 
         update_data = vacancy_in.model_dump(exclude_unset=True)
         if company_id:
-            update_data["company_id"] = company_id  # обновляем связь
+            update_data["company_id"] = company_id
 
         for field, value in update_data.items():
             setattr(db_vacancy, field, value)
@@ -117,7 +120,9 @@ async def update_vacancy(
 # --------------------- DELETE ---------------------
 async def delete_vacancy(db: AsyncSession, vacancy_id: int) -> bool:
     try:
-        result = await db.execute(select(Vacancy).where(Vacancy.id == vacancy_id))
+        result = await db.execute(
+            select(Vacancy).options(selectinload(Vacancy.company)).where(Vacancy.id == vacancy_id)
+        )
         vacancy = result.scalars().first()
 
         if not vacancy:
@@ -138,3 +143,26 @@ async def delete_vacancy(db: AsyncSession, vacancy_id: int) -> bool:
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Непредвиденная ошибка при удалении вакансии: {e}")
+
+
+# --------------------- CRUD COMPANY ---------------------
+async def get_company(db: AsyncSession, company_id: int) -> Optional[Company]:
+    try:
+        result = await db.execute(
+            select(Company)
+            .options(selectinload(Company.vacancies))  # подгружаем все вакансии компании
+            .where(Company.id == company_id)
+        )
+        return result.scalars().first()
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении компании: {e}")
+
+
+async def get_companies(db: AsyncSession) -> List[Company]:
+    try:
+        result = await db.execute(
+            select(Company).options(selectinload(Company.vacancies))  # подгружаем вакансии
+        )
+        return result.scalars().all()
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при получении списка компаний: {e}")

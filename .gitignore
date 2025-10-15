@@ -24,3 +24,6 @@ dmypy.json
 *.swp
 *.swo
 *~" > .gitignore
+*.jpg
+*.jpeg
+*.pdf

@@ -11,14 +11,10 @@ from app.schemas.schemas import CompanyCreate, CompanyUpdate
 from app.core.uploads import save_uploaded_file, delete_uploaded_file, update_entity
 
 
-async def _update_company_dict(
-    db: AsyncSession,
-    entity_id: int,
-    data: dict
-):
+async def _update_company_dict(db: AsyncSession, entity_id: int, data: dict):
     """
     Обновляет компанию по ID, используя переданные поля.
-    Возвращает обновлённый объект Company.
+    Возвращает обновлённый объект Company с проектами и вакансиями.
     """
     query = (
         update(Company)
@@ -28,12 +24,14 @@ async def _update_company_dict(
     )
     result = await db.execute(query)
     updated_company = result.scalar_one_or_none()
-
     if not updated_company:
         return None
 
-    await db.commit()
-    await db.refresh(updated_company)
+    # Подгружаем связи
+    await db.refresh(
+        updated_company,
+        attribute_names=["projects", "vacancies"]
+    )
     return updated_company
 
 
@@ -43,27 +41,22 @@ async def create_company(
     company_in: CompanyCreate,
     logo_file: Optional[UploadFile] = None
 ) -> Company:
-    """
-    Создаёт компанию с поддержкой загрузки логотипа.
-    Даты (created_at, updated_at) назначаются на уровне БД автоматически.
-    """
     try:
         logo_path = None
         if logo_file:
-            logo_path = await save_uploaded_file(logo_file, "logos")
+            logo_path = await save_uploaded_file(logo_file, "company_logos")
 
         company_data = company_in.dict(exclude_none=True)
-
-        if logo_path is not None:
+        if logo_path:
             company_data["logo_path"] = logo_path
-
         if "categories" not in company_data:
             company_data["categories"] = []
 
         db_company = Company(**company_data)
         db.add(db_company)
         await db.commit()
-        await db.refresh(db_company)
+        # Подгружаем проекты и вакансии сразу
+        await db.refresh(db_company, attribute_names=["projects", "vacancies"])
         return db_company
 
     except IntegrityError:
@@ -79,15 +72,12 @@ async def create_company(
 
 # ---------------- READ ONE ----------------
 async def get_company(db: AsyncSession, company_id: int) -> Optional[Company]:
-    """
-    Возвращает компанию по ID с проектами и вакансиями.
-    """
     try:
         result = await db.execute(
             select(Company)
             .options(
                 selectinload(Company.projects),
-                selectinload(Company.vacancies)  # добавляем вакансии
+                selectinload(Company.vacancies)  # eager loading вакансий
             )
             .where(Company.id == company_id)
         )
@@ -101,13 +91,10 @@ async def get_companies(
     db: AsyncSession,
     categories: Optional[List[str]] = None
 ) -> List[Company]:
-    """
-    Возвращает все компании, фильтруя по категориям (если заданы).
-    """
     try:
         stmt = select(Company).options(
             selectinload(Company.projects),
-            selectinload(Company.vacancies)  # добавляем вакансии
+            selectinload(Company.vacancies)  # eager loading вакансий
         )
 
         if categories:
@@ -128,16 +115,12 @@ async def update_company(
     company_in: CompanyUpdate,
     logo_file: Optional[UploadFile] = None
 ) -> Optional[Company]:
-    """
-    Обновляет компанию и логотип.
-    updated_at обновится автоматически за счёт onupdate=func.now().
-    """
     return await update_entity(
         db=db,
         entity_id=company_id,
         entity_in=company_in,
         crud_update_func=_update_company_dict,
-        model_class=Company,  # обязательно
+        model_class=Company,
         file=logo_file,
         sub_dir="company_logos"
     )
@@ -145,16 +128,12 @@ async def update_company(
 
 # ---------------- DELETE ----------------
 async def delete_company(db: AsyncSession, company_id: int) -> bool:
-    """
-    Удаляет компанию и связанные ресурсы (логотип, проекты, вакансии).
-    """
     try:
         result = await db.execute(select(Company).where(Company.id == company_id))
         db_company = result.scalars().first()
         if not db_company:
             return False
 
-        # Удаляем логотип, если есть
         if db_company.logo_path:
             await delete_uploaded_file(db_company.logo_path)
 
